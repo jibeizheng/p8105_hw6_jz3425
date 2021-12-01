@@ -22,8 +22,6 @@ options(
 
 scale_colour_discrete = scale_colour_viridis_d
 scale_fill_discrete = scale_fill_viridis_d
-
-set.seed(1)
 ```
 
 ## Problem 1
@@ -45,7 +43,7 @@ bwt_df %>%
   filter(pnumlbw != 0)
 ```
 
-The result shows that there is no missing data, and all psumsga and pnumlbw = 0 so we could neglect these two variables.
+The result shows that there is no missing data, and all `psumsga` and `pnumlbw` = 0 so we could neglect these two variables.
 
 Clean the data for regression analysis.
 
@@ -90,7 +88,7 @@ marginal[1:5]
 
 According to the p-values, some of the variables have strong association with birthweight while others do not. 
 
-First I will choose bhead, blength, delwt, fincome, gaweeks, mheight, momage, ppbmi, ppwt, smoken and wtgain for further tests.
+First I will choose `bhead`, `blength`, `delwt`, `fincome`, `gaweeks`, `mheight`, `momage`, `ppbmi`, `ppwt`, `smoken` and `wtgain` for further tests.
 
 ### Testing for pairwise relationship
 
@@ -106,7 +104,7 @@ bwt_df %>%
   broom::tidy()
 ```
 
-I will delete gaweeks and bhead and keep blength.
+I will delete `gaweeks` and `bhead` and keep `blength`.
 
 ```{r}
 bwt_df %>% 
@@ -126,7 +124,7 @@ bwt_df %>%
   broom::tidy()
 ```
 
-I will delete mheight, ppwt, ppbmi, wtgain and keep delwt.
+I will delete `mheight`, `ppwt`, `ppbmi`, `wtgain` and keep `delwt`.
 
 So my hypothesis is that a child's birthweight is associated with baby’s length at birth, mother’s weight at delivery, mother’s age at delivery, family monthly income, and average number of cigarettes smoked per day during pregnancy.
 
@@ -147,8 +145,15 @@ bwt_df %>%
   add_predictions(lm_1) %>% 
   ggplot(aes(x = pred, y = resid)) +
   geom_point(alpha = .3) +
-  geom_smooth(method = "lm", se = FALSE, color = "red")
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(
+    title = "Residual plot",
+    x = "Predicted value",
+    y = "Residual"
+  )
 ```
+
+As expected, the residual values bounce around 0 (the expected value is about 0).
 
 There is an outlier far away. 
 
@@ -183,6 +188,8 @@ cv_df =
     rmse_3 = map2_dbl(lm_3, test, ~rmse(model = .x, data = .y))
   )
 
+cv_df
+
 cv_df %>% 
   select(rmse_1:rmse_3) %>% 
   pivot_longer(
@@ -196,4 +203,100 @@ cv_df %>%
 ```
 
 My model gets pretty much the same rmse as model 2, but much higher than model 3. Maybe this shows that there are interactions between blength, bhead and babysex.
+
+# Problem 2
+
+```{r, warning=FALSE}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+
+boot_sample = function(df){
+  sample_frac(df, replace = TRUE)
+}
+```
+
+Bootstrap
+
+```{r}
+set.seed(518)
+
+boot_straps =
+  data_frame(
+    strap_number = 1:50,
+    strap_sample = rerun(50, boot_sample(weather_df))
+  )
+
+bootstrap_results = 
+  boot_straps %>% 
+  mutate(
+    models = map(strap_sample, ~lm(tmax ~ tmin, data = .x)),
+    results_1 = map(models, broom::glance),
+    results_2 = map(models, broom::tidy)
+  ) %>% 
+  select(strap_number, results_1, results_2) %>% 
+  unnest(results_1, results_2) %>% 
+  select(strap_number, r.squared, term, estimate) %>% 
+  janitor::clean_names()
+```
+
+Plot
+
+```{r}
+bootstrap_results %>% 
+  filter(term == "tmin") %>% 
+  ggplot(aes(x = r_squared)) +
+  geom_density() +
+  labs(
+    title = "Distribution of R Squared",
+    x = "R Squared",
+    y = "Density"
+  )
+  
+
+b0 =
+  bootstrap_results %>% 
+  filter(term == "(Intercept)") %>% 
+  pull(estimate)
+
+b1 = 
+  bootstrap_results %>% 
+  filter(term == "tmin") %>% 
+  pull(estimate)
+
+tibble(b0, b1) %>% 
+  ggplot(aes(x = log(b0 * b1))) +
+  geom_density() +
+  labs(
+    title = "Distribution of log(β0 * β1)",
+    x = "log(β0 * β1)",
+    y = "Density"
+  )
+```
+
+Compute CI
+
+```{r}
+bootstrap_results %>% 
+  filter(term == "tmin") %>% 
+  summarize(
+    ci_lower = quantile(r_squared, 0.025),
+    ci_upper = quantile(r_squared, 0.975)
+  )
+
+tibble(b0, b1) %>% 
+  summarize(
+    ci_lower = quantile(log(b0 * b1), 0.025),
+    ci_upper = quantile(log(b0 * b1), 0.975)
+  )
+```
+
 

@@ -150,6 +150,18 @@ bwt_df %>%
   geom_smooth(method = "lm", se = FALSE, color = "red")
 ```
 
+There is an outlier far away. 
+
+```{r}
+#check the outlier
+bwt_df %>% 
+  add_residuals(lm_1) %>% 
+  add_predictions(lm_1) %>% 
+  filter(resid > 4000)
+```
+
+For this baby, the blength 20 is extremely lower than other observations while the bhead is normal. It looks like a mistake, and it should be checked if possible.
+
 ## Compare my model to two others
 
 ```{r}
@@ -182,4 +194,6 @@ cv_df %>%
   ggplot(aes(x = model, y = rmse)) +
   geom_violin()
 ```
+
+My model gets pretty much the same rmse as model 2, but much higher than model 3. Maybe this shows that there are interactions between blength, bhead and babysex.
 

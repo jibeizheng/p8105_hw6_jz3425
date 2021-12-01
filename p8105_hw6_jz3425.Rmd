@@ -92,7 +92,7 @@ First I will choose `bhead`, `blength`, `delwt`, `fincome`, `gaweeks`, `mheight`
 
 ### Testing for pairwise relationship
 
-Among chosen variables, it seems that some of them may have strong linear associasions. Here are some of apparent ones that I find.
+Among chosen variables, it seems that some of them have strong linear associasions. Here are some of apparent ones that I find.
 
 ```{r, message=FALSE}
 bwt_df %>% 
@@ -206,7 +206,7 @@ My model gets pretty much the same rmse as model 2, but much higher than model 3
 
 # Problem 2
 
-```{r, warning=FALSE}
+```{r, message=FALSE}
 weather_df = 
   rnoaa::meteo_pull_monitors(
     c("USW00094728"),
@@ -218,21 +218,21 @@ weather_df =
     tmin = tmin / 10,
     tmax = tmax / 10) %>%
   select(name, id, everything())
-
-boot_sample = function(df){
-  sample_frac(df, replace = TRUE)
-}
 ```
 
 Bootstrap
 
-```{r}
-set.seed(518)
+```{r, warning = FALSE}
+boot_sample = function(df){
+  sample_frac(df, replace = TRUE)
+}
+
+set.seed(1015)
 
 boot_straps =
   data_frame(
-    strap_number = 1:50,
-    strap_sample = rerun(50, boot_sample(weather_df))
+    strap_number = 1:5000,
+    strap_sample = rerun(5000, boot_sample(weather_df))
   )
 
 bootstrap_results = 
@@ -282,21 +282,30 @@ tibble(b0, b1) %>%
   )
 ```
 
+The distribution of R Squared is close to a normal distribution, with μ ≈ 0.91, which means a good fit and there are about 91% of the data fit the regression model.
+
+The distribution of log(β0 * β1) is also close to a normal distribution, with μ ≈ 2.02.
+
+
 Compute CI
 
 ```{r}
-bootstrap_results %>% 
+r_squared_ci =
+  bootstrap_results %>% 
   filter(term == "tmin") %>% 
   summarize(
     ci_lower = quantile(r_squared, 0.025),
     ci_upper = quantile(r_squared, 0.975)
   )
 
-tibble(b0, b1) %>% 
+log_ci =
+  tibble(b0, b1) %>% 
   summarize(
     ci_lower = quantile(log(b0 * b1), 0.025),
     ci_upper = quantile(log(b0 * b1), 0.975)
   )
 ```
 
+The 95% confidence interval for R Squared is [`r round(pull(r_squared_ci, ci_lower), digit = 3)`, `r round(pull(r_squared_ci, ci_upper), digit = 3)`]. 
 
+The 95% confidence interval for log(β0 * β1) is [`r round(pull(log_ci, ci_lower), digit = 3)`, `r round(pull(log_ci, ci_upper), digit = 3)`].

@@ -6,7 +6,6 @@ output: github_document
 ```{r setup, include = FALSE}
 library(tidyverse)
 library(modelr)
-library(p8105.datasets)
 
 knitr::opts_chunk$set(
   fig.width = 6,
@@ -25,5 +24,162 @@ scale_colour_discrete = scale_colour_viridis_d
 scale_fill_discrete = scale_fill_viridis_d
 
 set.seed(1)
+```
+
+## Problem 1
+
+Load the data.
+
+```{r, message=FALSE}
+bwt_df = 
+  read_csv("data/birthweight.csv")
+
+
+# check for missing data
+bwt_df[rowSums(is.na(bwt_df)) != 0,]
+
+bwt_df %>% 
+  filter(pnumsga != 0)
+
+bwt_df %>% 
+  filter(pnumlbw != 0)
+```
+
+The result shows that there is no missing data, and all psumsga and pnumlbw = 0 so we could neglect these two variables.
+
+Clean the data for regression analysis.
+
+```{r}
+bwt_df =
+  bwt_df %>% 
+  select(-pnumsga, -pnumlbw) %>% 
+  mutate(
+    babysex = recode_factor(babysex, `1` = "male", `2` = "female"),
+    frace = recode_factor(frace, `1` = "white", `2` = "black", `3` = "asian", `4` = "puerto_rican", `8` = "other", `9` = "unknown"),
+    malform = factor(malform),
+    mrace = recode_factor(mrace, `1` = "white", `2` = "black", `3` = "asian", `4` = "puerto_rican", `8` = "other")
+  ) %>% 
+  relocate(bwt)
+
+#have a look
+head(bwt_df)
+```
+
+### Marginal distribution
+
+First let's see the marginal distribution of each variable.
+
+```{r}
+lm_function = function(x) {
+  
+  lm(bwt_df$bwt ~ x, data = bwt_df) %>% 
+    broom::tidy() 
+  
+}
+
+marginal = 
+  bwt_df %>% 
+  select(-bwt) %>% 
+  map(lm_function)
+
+#have a look at some of the results
+marginal[1:5]
+```
+
+...
+
+According to the p-values, some of the variables have strong association with birthweight while others do not. 
+
+First I will choose bhead, blength, delwt, fincome, gaweeks, mheight, momage, ppbmi, ppwt, smoken and wtgain for further tests.
+
+### Testing for pairwise relationship
+
+Among chosen variables, it seems that some of them may have strong linear associasions. Here are some of apparent ones that I find.
+
+```{r, message=FALSE}
+bwt_df %>% 
+  lm(blength ~ bhead, data = .) %>% 
+  broom::tidy()
+
+bwt_df %>% 
+  lm(blength ~ gaweeks, data = .) %>% 
+  broom::tidy()
+```
+
+I will delete gaweeks and bhead and keep blength.
+
+```{r}
+bwt_df %>% 
+  lm(delwt ~ mheight, data = .) %>% 
+  broom::tidy()
+
+bwt_df %>% 
+  lm(delwt ~ ppwt, data = .) %>% 
+  broom::tidy()
+
+bwt_df %>% 
+  lm(delwt ~ ppbmi, data = .) %>% 
+  broom::tidy()
+
+bwt_df %>% 
+  lm(delwt ~ wtgain, data = .) %>% 
+  broom::tidy()
+```
+
+I will delete mheight, ppwt, ppbmi, wtgain and keep delwt.
+
+So my hypothesis is that a child's birthweight is associated with baby’s length at birth, mother’s weight at delivery, mother’s age at delivery, family monthly income, and average number of cigarettes smoked per day during pregnancy.
+
+### Build the model
+
+```{r}
+lm_1 = 
+  lm(bwt ~ blength + delwt + fincome + smoken + momage, data = bwt_df)
+
+lm_1 %>% broom::tidy()
+```
+
+Show a plot of model residuals against fitted values:
+
+```{r, message=FALSE, warning=FALSE}
+bwt_df %>% 
+  add_residuals(lm_1) %>% 
+  add_predictions(lm_1) %>% 
+  ggplot(aes(x = pred, y = resid)) +
+  geom_point(alpha = .3) +
+  geom_smooth(method = "lm", se = FALSE, color = "red")
+```
+
+## Compare my model to two others
+
+```{r}
+cv_df =
+  crossv_mc(bwt_df, 100) %>% 
+  mutate(
+    lm_1 = map(train, ~lm(bwt ~ blength + delwt + fincome + smoken + momage, data = .x)),
+    lm_2 = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
+    lm_3 = map(train, ~lm(
+      bwt ~ bhead + blength + babysex + 
+          bhead * blength + blength * babysex + bhead * babysex +
+          bhead * blength * babysex, 
+    data = .x
+    ))
+  ) %>% 
+  mutate(
+    rmse_1 = map2_dbl(lm_1, test, ~rmse(model = .x, data = .y)),
+    rmse_2 = map2_dbl(lm_2, test, ~rmse(model = .x, data = .y)),
+    rmse_3 = map2_dbl(lm_3, test, ~rmse(model = .x, data = .y))
+  )
+
+cv_df %>% 
+  select(rmse_1:rmse_3) %>% 
+  pivot_longer(
+    rmse_1:rmse_3,
+    names_to = "model",
+    values_to = "rmse",
+    names_prefix = "rmse_"
+  ) %>% 
+  ggplot(aes(x = model, y = rmse)) +
+  geom_violin()
 ```
 
